@@ -75,12 +75,11 @@ export async function replyToTeams(
   appId: string,
   appPassword: string,
 ): Promise<void> {
-  assertSafeUrl(serviceUrl);
   const safeBase = new URL(serviceUrl).href.replace(/\/$/, "");
+  const url = `${safeBase}/v3/conversations/${encodeURIComponent(conversationId)}/activities/${encodeURIComponent(activityId)}`;
+  assertSafeUrl(url);
   const token = await getTeamsBotToken(appId, appPassword);
-  const url = `${safeBase}/v3/conversations/${conversationId}/activities/${activityId}`;
-  // snyk-disable-next-line javascript/Ssrf
-  await fetch(url, { // lgtm[js/server-side-request-forgery] -- serviceUrl validated by assertSafeUrl(); safeBase is derived via URL constructor after that check
+  await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ type: "message", text }),
@@ -95,12 +94,11 @@ async function sendTeamsTyping(
   appPassword: string,
 ): Promise<void> {
   try {
-    assertSafeUrl(serviceUrl);
     const safeTypingBase = new URL(serviceUrl).href.replace(/\/$/, "");
+    const url = `${safeTypingBase}/v3/conversations/${encodeURIComponent(conversationId)}/activities`;
+    assertSafeUrl(url);
     const token = await getTeamsBotToken(appId, appPassword);
-    const url = `${safeTypingBase}/v3/conversations/${conversationId}/activities`;
-    // snyk-disable-next-line javascript/Ssrf
-    await fetch(url, { // lgtm[js/server-side-request-forgery] -- serviceUrl validated by assertSafeUrl(); safeTypingBase is derived via URL constructor after that check
+    await fetch(url, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ type: "typing" }),

@@ -7,6 +7,7 @@
 
 import type { GitRepo } from "@shared/schema";
 import { decrypt } from "../lib/encryption";
+import { assertSafeUrl } from "../lib/ssrf-guard";
 import type { GitWebhookEvent } from "./git-agent-engine";
 
 /** Inline copy — avoids circular import with git-agent-engine. */
@@ -64,8 +65,8 @@ async function postJsonWithRetry(
   headers: Record<string, string>,
   body: Record<string, string>,
 ): Promise<void> {
-  // snyk-disable-next-line javascript/Ssrf
-  const res = await fetch(url, { // lgtm[js/server-side-request-forgery] -- url is a trusted internal callback endpoint passed by the orchestrator, not user-controlled
+  assertSafeUrl(url);
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
