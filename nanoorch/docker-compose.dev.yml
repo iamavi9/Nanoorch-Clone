@@ -1,0 +1,26 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────
+#  NanoOrch — Local Docker development override
+#
+#  This file is NOT auto-applied. Use explicitly:
+#    docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+#  For EC2 / production, use ONLY:
+#    docker compose up -d
+# ─────────────────────────────────────────────────────────────
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    command: npm run dev
+    environment:
+      NODE_ENV: development
+    volumes:
+      - .:/app
+      - /app/node_modules
+    ports:
+      - "5000:5000"

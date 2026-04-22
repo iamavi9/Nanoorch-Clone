@@ -1,0 +1,169 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────
+#  NanoOrch — Docker Compose (EC2 / self-hosted)
+#
+#  Quick start (plain .env — secrets visible in `docker inspect`):
+#    cp .env.example .env                              # fill in passwords + API keys
+#    docker build -t nanoorch-agent:latest ./agent     # action-task runner
+#    docker build -t nanoorch-sandbox:latest ./agent/sandbox  # code execution sandbox
+#    docker compose up -d
+#    open http://<your-ip>:3000
+#
+#  Hardened start (Docker secrets — values never appear in `docker inspect`):
+#    ./secrets/create-secrets.sh                       # interactive secret-file setup
+#    docker compose -f docker-compose.secrets.yml up -d
+#    See secrets/README.md for details.
+#
+#  Sandbox runtimes:
+#    SANDBOX_RUNTIME=runsc  (default) requires gVisor installed on the host
+#    SANDBOX_RUNTIME=runc   uses standard Docker (no gVisor needed)
+#
+#  gVisor for agent task containers (separate from code sandbox):
+#    Set AGENT_RUNTIME=runsc in .env to isolate agent containers via gVisor.
+#
+#  Custom seccomp profile:
+#    Set SECCOMP_PROFILE=/host/path/to/nanoorch.json in .env.
+#    A hardened profile is provided at agent/seccomp/nanoorch.json.
+# ─────────────────────────────────────────────────────────────
+
+services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - nanoorch_net
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       ${POSTGRES_DB:-nanoorch}
+      POSTGRES_USER:     ${POSTGRES_USER:-nanoorch}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nanoorch} -d ${POSTGRES_DB:-nanoorch}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - nanoorch_net
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      NODE_ENV:    production
+      PORT:        3000
+      MIGRATIONS_DIR: /app/migrations
+
+      # Public URL — used to build SSO (OIDC/SAML) callback and ACS URLs that are
+      # registered with the identity provider.  Must be the full origin your IdP
+      # will redirect back to (e.g. https://nanoorch.your-company.com).
+      # If left blank, NanoOrch derives it from X-Forwarded-Proto/Host headers,
+      # which works correctly behind Nginx.  Set explicitly when using direct IP
+      # access or a non-standard proxy that does not set those headers.
+      APP_URL: ${APP_URL:-}
+
+      # Database
+      DATABASE_URL: postgres://${POSTGRES_USER:-nanoorch}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-nanoorch}
+
+      # Session (required — use a long random string)
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env}
+
+      # Set to "true" only when the app is behind an HTTPS reverse proxy (nginx/traefik/ALB).
+      # Leave unset (or false) for plain HTTP deployments — setting this on HTTP
+      # causes browsers to silently drop the session cookie, logging users out.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+
+      # Admin account (seeded on first boot only)
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+
+      # Credential encryption — strongly recommended; derived from SESSION_SECRET if blank
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+
+      # AI provider keys (at least one required)
+      AI_INTEGRATIONS_OPENAI_API_KEY:     ${AI_INTEGRATIONS_OPENAI_API_KEY:-}
+      AI_INTEGRATIONS_OPENAI_BASE_URL:    ${AI_INTEGRATIONS_OPENAI_BASE_URL:-https://api.openai.com/v1}
+      AI_INTEGRATIONS_ANTHROPIC_API_KEY:  ${AI_INTEGRATIONS_ANTHROPIC_API_KEY:-}
+      AI_INTEGRATIONS_ANTHROPIC_BASE_URL: ${AI_INTEGRATIONS_ANTHROPIC_BASE_URL:-https://api.anthropic.com}
+      AI_INTEGRATIONS_GEMINI_API_KEY:     ${AI_INTEGRATIONS_GEMINI_API_KEY:-}
+      AI_INTEGRATIONS_GEMINI_BASE_URL:    ${AI_INTEGRATIONS_GEMINI_BASE_URL:-https://generativelanguage.googleapis.com}
+
+      # Docker sandbox (action tasks + code execution)
+      # Mount the host Docker socket so the app can spawn containers
+      DOCKER_SOCKET:    /var/run/docker.sock
+      AGENT_IMAGE:      ${AGENT_IMAGE:-nanoorch-agent:latest}
+      SANDBOX_IMAGE:    ${SANDBOX_IMAGE:-nanoorch-sandbox:latest}
+      # SANDBOX_RUNTIME controls the runtime for code-execution sandbox containers.
+      # Set to runc if gVisor (runsc) is not installed on the host.
+      SANDBOX_RUNTIME:  ${SANDBOX_RUNTIME:-runsc}
+      # AGENT_RUNTIME controls the runtime for agent action-task containers.
+      # Set to runsc to enable gVisor isolation for agent containers too.
+      # Leave blank to use the default Docker runtime (runc).
+      AGENT_RUNTIME:    ${AGENT_RUNTIME:-}
+      # SECCOMP_PROFILE: absolute host path to a custom seccomp JSON profile.
+      # Applied to both agent and sandbox containers when set.
+      # Example: SECCOMP_PROFILE=/etc/nanoorch/seccomp/nanoorch.json
+      # A hardened profile is included at agent/seccomp/nanoorch.json.
+      SECCOMP_PROFILE:  ${SECCOMP_PROFILE:-}
+      # DOCKER_PROXY_URL: full base URL that agent containers use to reach the
+      # NanoOrch inference proxy.  Defaults to http://host.docker.internal:3000/internal/proxy
+      # which relies on the --add-host host.docker.internal:host-gateway flag
+      # (requires Docker Engine >= 20.10).
+      # If you see "Connection error" in action-task logs, set this in your
+      # .env file and re-run docker compose up -d:
+      #   DOCKER_PROXY_URL=http://172.17.0.1:3000/internal/proxy
+      DOCKER_PROXY_URL: ${DOCKER_PROXY_URL}
+
+      # Redis — optional but recommended for session store and rate limiting.
+      # Sessions fall back to PostgreSQL and rate limits fall back to in-memory
+      # if this is unset.
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Mount the seccomp profile directory so SECCOMP_PROFILE path is visible
+      # inside the container (existsSync check) AND to the Docker daemon (same host path).
+      # If the directory does not exist on the host, Docker creates it empty and
+      # the executor will skip the seccomp flag automatically.
+      - /etc/nanoorch/seccomp:/etc/nanoorch/seccomp:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # /api/auth/me is public and always returns 200 (null when unauthenticated)
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/auth/me || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - nanoorch_net
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  nanoorch_net:
+    driver: bridge

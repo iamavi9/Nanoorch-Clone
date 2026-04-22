@@ -1,0 +1,12 @@
+{
+  "name": "nanoorch-agent",
+  "version": "1.0.0",
+  "description": "NanoOrch ephemeral agent container runner",
+  "type": "module",
+  "main": "runner.js",
+  "dependencies": {
+    "openai": "^6.27.0",
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@google/genai": "^1.44.0"
+  }
+}

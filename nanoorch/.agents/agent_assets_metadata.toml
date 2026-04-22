@@ -1,0 +1,62 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "JGtd9-wfui7k3Vku95n-6"
+uri = "file://USAGE.md"
+type = "text"
+title = "NanoOrch Usage Guide"
+
+[[outputs]]
+id = "8AT9Yi904ayIadUQbl2SM"
+uri = "file://NanoOrch_User_Manual.docx"
+type = "word_document"
+title = "NanoOrch User Manual (updated)"
+
+[[outputs]]
+id = "ziWosrvezOFgbEeFWi8V2"
+uri = "file://client/public/NanoOrch-Architecture.pptx"
+type = "slides"
+title = "NanoOrch-Architecture.pptx — typos corrected"
+
+[[outputs]]
+id = "ylKVs_BwrstQ65LWft4kS"
+uri = "file://docs/screenshots/nanoorch-architecture_1774022201704.png"
+type = "image"
+title = "NanoOrch Architecture Diagram (PNG)"
+
+[[outputs]]
+id = "eTgPilW2czB3kVQlv1_O6"
+uri = "file://client/public/NanoOrch-CambridgeTech.pptx"
+type = "slides"
+title = "NanoOrch — Cambridge Technology Template"
+
+[[outputs]]
+id = "oFdQHtyNfm_Yn__WbwmhE"
+uri = "file://docs/screenshots/gitlab-mr-flow.png"
+type = "image"
+title = "GitLab MR → NanoOrch → Google Chat — Architecture Diagram"
+
+[[outputs]]
+id = "dhgzVsogT5SRzu2BrsW-Z"
+uri = "file://NanoOrch_Brochure.pdf"
+type = "pdf"
+title = "NanoOrch Product Brochure — Cambridge (v3)"
+
+[[outputs]]
+id = "CZKPyLLzNtb4j3f1q-1W3"
+uri = "file://nanoorch-e2e-flow.png"
+type = "image"
+title = "NanoOrch — End-to-End Architecture Flow"
+
+[[outputs]]
+id = "mMdJGafJ-HGrrPfRyDep7"
+uri = "file://NanoOrch_Market_Report.xlsx"
+type = "table"
+title = "NanoOrch Market Report — Competitive Landscape & Valuation"
+
+[[outputs]]
+id = "LkXa7JPLTtL7wFX-wy8uU"
+uri = "file://NanoOrch_Market_Report.pdf"
+type = "pdf"
+title = "NanoOrch Market Report — Competitive Landscape & Valuation (PDF)"

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: agent-sandboxes
+  labels:
+    kubernetes.io/metadata.name: agent-sandboxes
+    app.kubernetes.io/managed-by: nanoorch

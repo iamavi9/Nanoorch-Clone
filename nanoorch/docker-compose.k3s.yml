@@ -1,0 +1,173 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────
+#  NanoOrch — K3s OpenShell-style Isolation Overlay
+#
+#  Use this file ON TOP OF docker-compose.secrets.yml to activate
+#  K3s agent sandboxing while reusing the existing Postgres data
+#  and all existing Docker secrets.
+#
+#  Production command (single line):
+#    docker compose \
+#      -f docker-compose.secrets.yml \
+#      -f docker-compose.k3s.yml \
+#      up -d
+#
+#  What this overlay adds / changes:
+#    • registry   — local image registry (pull agent image from localhost:5001)
+#    • k3s        — K3s server (Kubernetes-in-Docker, privileged)
+#    • k3s-init   — one-shot: patches kubeconfig URL, applies agent policies
+#    • app        — adds K3s env vars + kubeconfig volume mount;
+#                   sets SANDBOX_MODE=k3s so agent tasks run as K3s Jobs
+#                   instead of plain Docker containers
+#
+#  Prerequisites (run once):
+#    1. ./secrets/create-secrets.sh
+#       This now also generates secrets/k3s_token.txt automatically.
+#    2. Build the agent runner image and push to the local registry:
+#         (start registry first)
+#         docker compose -f docker-compose.secrets.yml -f docker-compose.k3s.yml up -d registry
+#         docker build -t localhost:5001/nanoorch-agent:latest ./agent
+#         docker push localhost:5001/nanoorch-agent:latest
+#       The registry is exposed at localhost:5001 on the host.
+#       K3s pulls it internally as registry:5000/nanoorch-agent:latest.
+#
+#  Stop:
+#    docker compose -f docker-compose.secrets.yml -f docker-compose.k3s.yml down
+# ─────────────────────────────────────────────────────────────
+
+# K3S_TOKEN is stored as a Docker secret (never visible in docker inspect Env).
+# Generated automatically by ./secrets/create-secrets.sh
+secrets:
+  k3s_token:
+    file: ./secrets/k3s_token.txt
+
+services:
+
+  # ── Local image registry ────────────────────────────────────────────────────
+  # K3s pods pull the agent image from here instead of Docker Hub.
+  # Push the built image with: docker push localhost:5001/nanoorch-agent:latest
+  registry:
+    image: registry:2
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5001:5000"
+    volumes:
+      - registry_data:/var/lib/registry
+    networks:
+      - nanoorch_net
+
+  # ── K3s server (Kubernetes-in-Docker) ──────────────────────────────────────
+  # Runs a single-node K3s cluster. Agent tasks run as Kubernetes Jobs in the
+  # "agent-sandboxes" namespace with NetworkPolicy restricting egress to port 3000.
+  #
+  # K3S_TOKEN is read from the secret file at runtime via the entrypoint wrapper —
+  # it is never placed in the environment block so it never appears in docker inspect.
+  k3s:
+    image: rancher/k3s:latest
+    privileged: true
+    restart: unless-stopped
+    entrypoint:
+      - sh
+      - -c
+      - |
+        export K3S_TOKEN=$(cat /run/secrets/k3s_token)
+        exec k3s server \
+          --disable traefik \
+          --disable servicelb \
+          --disable metrics-server \
+          --tls-san k3s \
+          --node-name k3s-node \
+          --flannel-iface=eth0 \
+          --kubelet-arg=cgroup-driver=cgroupfs \
+          --kubelet-arg=cgroups-per-qos=false \
+          --kubelet-arg=enforce-node-allocatable=""
+    secrets:
+      - k3s_token
+    cgroup: host
+    tmpfs:
+      - /run
+      - /var/run
+    volumes:
+      - k3s_data:/var/lib/rancher/k3s
+      - k3s_config:/etc/rancher/k3s
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      - ./k3s/registries.yaml:/etc/rancher/k3s/registries.yaml:ro
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "kubectl get nodes --kubeconfig /etc/rancher/k3s/k3s.yaml >/dev/null 2>&1"
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+    networks:
+      - nanoorch_net
+
+  # ── K3s initialiser (one-shot) ──────────────────────────────────────────────
+  # Runs after K3s is healthy. Patches the kubeconfig API server URL from
+  # 127.0.0.1 to "k3s" (the Docker service name), then applies the agent
+  # namespace, RBAC, NetworkPolicy, LimitRange, and ResourceQuota manifests.
+  k3s-init:
+    image: rancher/k3s:latest
+    depends_on:
+      k3s:
+        condition: service_healthy
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+        echo 'Patching kubeconfig API server URL to https://k3s:6443 ...'
+        kubectl config set-cluster default --server=https://k3s:6443
+        echo 'Applying agent sandbox policies ...'
+        kubectl apply -f /manifests/
+        echo 'K3s agent sandbox ready.'
+        echo 'Note: nanoorch-app Service+Endpoints are created lazily by the executor on first task run.'
+    volumes:
+      - k3s_config:/etc/rancher/k3s
+      - ./k3s/manifests:/manifests:ro
+    restart: "no"
+    networks:
+      - nanoorch_net
+
+  # ── NanoOrch app — K3s overlay ─────────────────────────────────────────────
+  # Merges with the app service in docker-compose.secrets.yml.
+  # Only K3s-specific additions are declared here; all existing env vars,
+  # secrets, and ports from the base file are preserved unchanged.
+  app:
+    environment:
+      # Activate K3s executor — takes priority over Docker executor.
+      SANDBOX_MODE:  k3s
+      KUBECONFIG:    /k3s-config/k3s.yaml
+      K3S_NAMESPACE: agent-sandboxes
+
+      # URL that K3s pods use to reach NanoOrch's inference proxy.
+      # Uses the Kubernetes Service "nanoorch-app" created by k3s-init,
+      # which has an Endpoint pointing to the app container's Docker IP.
+      # CoreDNS resolves K8s service names; it cannot resolve Docker service names.
+      K3S_PROXY_URL: http://nanoorch-app:3000/internal/proxy
+
+      # Override the agent image to point at the local registry instead of
+      # the plain Docker image defined in docker-compose.secrets.yml.
+      # Build & push: docker build -t localhost:5001/nanoorch-agent:latest ./agent
+      #               docker push localhost:5001/nanoorch-agent:latest
+      AGENT_IMAGE: ${AGENT_IMAGE:-registry:5000/nanoorch-agent:latest}
+
+    volumes:
+      # Kubeconfig volume — NanoOrch reads this to create K3s Jobs.
+      # The docker.sock volume from docker-compose.secrets.yml is still
+      # mounted but unused in K3s mode (SANDBOX_MODE=k3s takes priority).
+      - k3s_config:/k3s-config:ro
+      # Seccomp profile — still needed for code-execution sandbox containers
+      # which use Docker even in K3s mode. Mount so the in-process existsSync
+      # check and the Docker daemon both see the file at the same host path.
+      - /etc/nanoorch/seccomp:/etc/nanoorch/seccomp:ro
+
+    depends_on:
+      k3s-init:
+        condition: service_completed_successfully
+
+volumes:
+  registry_data:
+  k3s_data:
+  k3s_config:
