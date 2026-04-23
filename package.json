@@ -17,7 +17,7 @@
     "overrides": {
       "path-to-regexp": "^8.4.0",
       "picomatch": "^4.0.4",
-      "lodash": "^4.18.1",
+      "lodash": "4.17.21",
       "brace-expansion": "^2.0.3",
       "yaml": "^2.8.3",
       "esbuild": ">=0.25.0"

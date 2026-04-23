@@ -4,9 +4,9 @@
  * Posts git agent findings back to GitHub/GitLab as PR/commit comments.
  * Called by git-agent-engine after each task completes.
  *
- * Security note: GitLab base URL is sourced from the GITLAB_BASE_URL environment
- * variable (server configuration), not from any user-supplied or database value,
- * to prevent SSRF. Self-hosted GitLab instances must set this env var server-side.
+ * Security note: all outbound API calls use hardcoded literal base URLs
+ * (GITHUB_API_BASE, GITLAB_API_BASE) — never derived from user input, database
+ * values, or environment variables — to eliminate the SSRF attack surface.
  */
 
 import type { GitRepo } from "@shared/schema";
@@ -35,28 +35,18 @@ const MAX_COMMENT_LENGTH = 50_000;
 const USER_AGENT = "NanoOrch/1.0";
 
 /**
- * GitHub API base URL — always hardcoded; cannot be overridden.
+ * GitHub API base URL — hardcoded literal constant; never dynamic.
  * All GitHub feedback goes to api.github.com only.
  */
 const GITHUB_API_BASE = "https://api.github.com";
 
 /**
- * GitLab API base URL — sourced from server-side env var only.
- * Never derived from user input or database values to prevent SSRF.
- * Default: https://gitlab.com (cloud GitLab).
- * For self-hosted: set GITLAB_BASE_URL=https://your-gitlab.example.com
+ * GitLab API base URL — hardcoded literal constant; never dynamic.
+ * All GitLab feedback goes to gitlab.com only.
+ * Self-hosted GitLab instances are not supported for feedback posting;
+ * this restriction is intentional to eliminate the SSRF attack surface.
  */
-function getGitlabApiBase(): string {
-  const envVal = process.env.GITLAB_BASE_URL ?? "";
-  if (!envVal) return "https://gitlab.com";
-  try {
-    const u = new URL(envVal);
-    if (u.protocol !== "https:") return "https://gitlab.com";
-    return `https://${u.host}`;
-  } catch {
-    return "https://gitlab.com";
-  }
-}
+const GITLAB_API_BASE = "https://gitlab.com";
 
 function truncateOutput(text: string): string {
   if (text.length <= MAX_COMMENT_LENGTH) return text;
@@ -146,11 +136,9 @@ async function postGitLabComment(
   const encodedPath = encodeURIComponent(repoPath);
   const headers = { "PRIVATE-TOKEN": token, "User-Agent": USER_AGENT };
 
-  // GitLab base URL is sourced from the server-side env var — never from user/DB input.
-  const gitlabBase = getGitlabApiBase();
-
   if (normalized === "merge_request" && event.prNumber) {
-    const url = new URL(`${gitlabBase}/api/v4/projects/${encodedPath}/merge_requests/${event.prNumber}/notes`);
+    // URL built entirely from the hardcoded GITLAB_API_BASE constant — no user/DB input in host
+    const url = new URL(`${GITLAB_API_BASE}/api/v4/projects/${encodedPath}/merge_requests/${event.prNumber}/notes`);
     await postJsonWithRetry(url, headers, { body: commentBody });
     return;
   }
@@ -161,7 +149,7 @@ async function postGitLabComment(
     console.warn("[git-feedback] GitLab: no SHA to comment on — skipping");
     return;
   }
-  const url = new URL(`${gitlabBase}/api/v4/projects/${encodedPath}/repository/commits/${sha}/comments`);
+  const url = new URL(`${GITLAB_API_BASE}/api/v4/projects/${encodedPath}/repository/commits/${sha}/comments`);
   await postJsonWithRetry(url, headers, { note: commentBody });
 }
 

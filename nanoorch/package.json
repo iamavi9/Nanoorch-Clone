@@ -84,7 +84,7 @@
     "hono": "^4.12.14",
     "input-otp": "^1.4.2",
     "ioredis": "^5.10.1",
-    "lodash": "^4.18.0",
+    "lodash": "^4.17.21",
     "lucide-react": "^0.453.0",
     "memoizee": "^0.4.17",
     "memorystore": "^1.6.7",
