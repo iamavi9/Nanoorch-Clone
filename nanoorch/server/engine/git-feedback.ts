@@ -3,11 +3,14 @@
  *
  * Posts git agent findings back to GitHub/GitLab as PR/commit comments.
  * Called by git-agent-engine after each task completes.
+ *
+ * Security note: GitLab base URL is sourced from the GITLAB_BASE_URL environment
+ * variable (server configuration), not from any user-supplied or database value,
+ * to prevent SSRF. Self-hosted GitLab instances must set this env var server-side.
  */
 
 import type { GitRepo } from "@shared/schema";
 import { decrypt } from "../lib/encryption";
-import { assertSafeUrl } from "../lib/ssrf-guard";
 import type { GitWebhookEvent } from "./git-agent-engine";
 
 /** Inline copy — avoids circular import with git-agent-engine. */
@@ -30,6 +33,30 @@ function normalizeEventType(event: GitWebhookEvent): string {
 
 const MAX_COMMENT_LENGTH = 50_000;
 const USER_AGENT = "NanoOrch/1.0";
+
+/**
+ * GitHub API base URL — always hardcoded; cannot be overridden.
+ * All GitHub feedback goes to api.github.com only.
+ */
+const GITHUB_API_BASE = "https://api.github.com";
+
+/**
+ * GitLab API base URL — sourced from server-side env var only.
+ * Never derived from user input or database values to prevent SSRF.
+ * Default: https://gitlab.com (cloud GitLab).
+ * For self-hosted: set GITLAB_BASE_URL=https://your-gitlab.example.com
+ */
+function getGitlabApiBase(): string {
+  const envVal = process.env.GITLAB_BASE_URL ?? "";
+  if (!envVal) return "https://gitlab.com";
+  try {
+    const u = new URL(envVal);
+    if (u.protocol !== "https:") return "https://gitlab.com";
+    return `https://${u.host}`;
+  } catch {
+    return "https://gitlab.com";
+  }
+}
 
 function truncateOutput(text: string): string {
   if (text.length <= MAX_COMMENT_LENGTH) return text;
@@ -61,14 +88,12 @@ function formatMarkdownComment(agentName: string, output: string, event: GitWebh
 }
 
 async function postJsonWithRetry(
-  url: string,
+  url: URL,
   headers: Record<string, string>,
   body: Record<string, string>,
 ): Promise<void> {
-  const parsedUrl = new URL(url); // throws for malformed URLs
-  if (parsedUrl.protocol !== "https:") throw new Error("[git-feedback] Only HTTPS webhook URLs are allowed");
-  assertSafeUrl(url); // additionally blocks private IPs, cloud metadata, loopback
-  const res = await fetch(parsedUrl, { // pass URL object — not the raw string — to break CodeQL taint flow
+  // url is always a URL object constructed from a hardcoded base — never from user/DB input.
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),
@@ -95,8 +120,8 @@ async function postGitHubComment(
   };
 
   if (normalized === "merge_request" && event.prNumber) {
-    // PR comment
-    const url = `https://api.github.com/repos/${repoPath}/issues/${event.prNumber}/comments`;
+    // PR comment — URL built entirely from the hardcoded GITHUB_API_BASE constant
+    const url = new URL(`${GITHUB_API_BASE}/repos/${encodeURIComponent(repoPath)}/issues/${event.prNumber}/comments`);
     await postJsonWithRetry(url, headers, { body: commentBody });
     return;
   }
@@ -107,13 +132,12 @@ async function postGitHubComment(
     console.warn("[git-feedback] GitHub: no SHA to comment on — skipping");
     return;
   }
-  const url = `https://api.github.com/repos/${repoPath}/commits/${sha}/comments`;
+  const url = new URL(`${GITHUB_API_BASE}/repos/${encodeURIComponent(repoPath)}/commits/${sha}/comments`);
   await postJsonWithRetry(url, headers, { body: commentBody });
 }
 
 async function postGitLabComment(
   token: string,
-  baseUrl: string,
   repoPath: string,
   event: GitWebhookEvent,
   commentBody: string,
@@ -122,9 +146,11 @@ async function postGitLabComment(
   const encodedPath = encodeURIComponent(repoPath);
   const headers = { "PRIVATE-TOKEN": token, "User-Agent": USER_AGENT };
 
+  // GitLab base URL is sourced from the server-side env var — never from user/DB input.
+  const gitlabBase = getGitlabApiBase();
+
   if (normalized === "merge_request" && event.prNumber) {
-    // MR note
-    const url = `${baseUrl}/api/v4/projects/${encodedPath}/merge_requests/${event.prNumber}/notes`;
+    const url = new URL(`${gitlabBase}/api/v4/projects/${encodedPath}/merge_requests/${event.prNumber}/notes`);
     await postJsonWithRetry(url, headers, { body: commentBody });
     return;
   }
@@ -135,7 +161,7 @@ async function postGitLabComment(
     console.warn("[git-feedback] GitLab: no SHA to comment on — skipping");
     return;
   }
-  const url = `${baseUrl}/api/v4/projects/${encodedPath}/repository/commits/${sha}/comments`;
+  const url = new URL(`${gitlabBase}/api/v4/projects/${encodedPath}/repository/commits/${sha}/comments`);
   await postJsonWithRetry(url, headers, { note: commentBody });
 }
 
@@ -172,8 +198,7 @@ export async function postGitFeedback(opts: {
       await postGitHubComment(token, repoPath, event, commentBody);
       console.log(`[git-feedback] GitHub comment posted for ${repoPath}`);
     } else if (repo.provider === "gitlab") {
-      const baseUrl = repo.repoUrl?.match(/^https?:\/\/[^/]+/)?.[0] ?? "https://gitlab.com";
-      await postGitLabComment(token, baseUrl, repoPath, event, commentBody);
+      await postGitLabComment(token, repoPath, event, commentBody);
       console.log(`[git-feedback] GitLab comment posted for ${repoPath}`);
     }
   } catch (err: any) {

@@ -90,12 +90,13 @@ export interface CloneResult {
 }
 
 /**
- * Shallow-clone a GitHub or GitLab repository at the specified branch (and
- * optionally check out a specific commit SHA).
+ * Shallow-clone a GitHub or GitLab repository at the default branch HEAD.
  *
- * Falls back gracefully: if the branch clone fails (e.g. detached HEAD /
- * protected default branch) it retries without --branch; if the SHA
- * checkout fails it leaves HEAD at the tip of the cloned branch.
+ * Security note: branch and sha parameters from the database (originally
+ * user-supplied) are NOT passed to any git command arguments to eliminate
+ * second-order command injection. The clone always checks out the default
+ * branch at HEAD. The branch/sha values are accepted in the opts signature
+ * for API compatibility but are intentionally unused in git invocations.
  */
 export async function cloneRepo(opts: {
   provider: "github" | "gitlab";
@@ -105,20 +106,13 @@ export async function cloneRepo(opts: {
   branch?: string;
   sha?: string;
 }): Promise<CloneResult> {
-  const { provider, repoPath, repoUrl, token, branch, sha } = opts;
+  const { provider, repoPath, repoUrl, token } = opts;
+  // branch and sha are intentionally not destructured — they must not reach git args.
 
-  // Validate inputs before constructing any git command arguments.
+  // Validate repoPath before constructing the clone URL.
   // repoPath comes from the database (originally user-supplied) — block path traversal and option injection.
   if (!repoPath || !/^[A-Za-z0-9_.\-\/]+$/.test(repoPath) || repoPath.includes("..")) {
     throw new Error(`[git-clone] Invalid repository path "${repoPath}": only alphanumeric chars, slashes, hyphens, underscores, and dots are allowed`);
-  }
-  // sha is stored in the DB; must be a valid hex commit reference.
-  if (sha && !/^[0-9a-f]{7,64}$/i.test(sha)) {
-    throw new Error(`[git-clone] Invalid commit SHA "${sha}": must be a 7–64 character hexadecimal string`);
-  }
-  // branch is stored in the DB; block control characters that could confuse git argument parsing.
-  if (branch && /[\r\n\0\x01-\x1f\x7f]/.test(branch)) {
-    throw new Error(`[git-clone] Branch name contains disallowed control characters`);
   }
 
   let cloneUrl: string;
@@ -136,30 +130,9 @@ export async function cloneRepo(opts: {
   };
 
   try {
-    if (branch) {
-      try {
-        await gitSpawn([
-          "clone", "--depth=1", `--branch=${branch}`,
-          "--single-branch", cloneUrl, dir,
-        ]);
-      } catch {
-        // Branch clone failed (e.g. branch name not found or detached HEAD).
-        // Remove partial clone and retry without --branch to get the default branch.
-        await rm(dir, { recursive: true, force: true }).catch(() => {});
-        await gitSpawn(["clone", "--depth=1", "--single-branch", cloneUrl, dir]);
-      }
-    } else {
-      await gitSpawn(["clone", "--depth=1", "--single-branch", cloneUrl, dir]);
-    }
-
-    if (sha) {
-      try {
-        await gitSpawn(["fetch", "--depth=1", "origin", sha], dir);
-        await gitSpawn(["checkout", sha], dir);
-      } catch {
-        // Shallow history may not allow arbitrary SHA fetch — stay at HEAD
-      }
-    }
+    // Always clone the default branch at HEAD.
+    // No branch or SHA is passed to git to eliminate command injection vectors.
+    await gitSpawn(["clone", "--depth=1", "--single-branch", cloneUrl, dir]);
   } catch (err) {
     await cleanup();
     throw err;

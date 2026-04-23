@@ -28,6 +28,24 @@ interface TeamsOAuthToken {
 
 const tokenCache = new Map<string, TeamsOAuthToken>();
 
+/**
+ * Microsoft Bot Connector base URL — sourced from server-side env var only.
+ * Never derived from activity.serviceUrl (HTTP request body) to prevent SSRF.
+ * Default: https://smba.trafficmanager.net/apis (global Bot Connector endpoint).
+ * For regional deployments set TEAMS_BOT_BASE_URL to the appropriate endpoint.
+ */
+function getTeamsBotBaseUrl(): string {
+  const envVal = process.env.TEAMS_BOT_BASE_URL ?? "";
+  if (!envVal) return "https://smba.trafficmanager.net/apis";
+  try {
+    const u = new URL(envVal);
+    if (u.protocol !== "https:") return "https://smba.trafficmanager.net/apis";
+    return `https://${u.host}`;
+  } catch {
+    return "https://smba.trafficmanager.net/apis";
+  }
+}
+
 export async function getTeamsBotToken(appId: string, appPassword: string): Promise<string> {
   const cached = tokenCache.get(appId);
   if (cached && cached.expires_at > Date.now() + 60_000) return cached.access_token;
@@ -72,41 +90,22 @@ async function verifyTeamsJwt(authHeader: string): Promise<boolean> {
   }
 }
 
-/** Microsoft Teams service URLs must be from one of these verified Microsoft domains. */
-const TEAMS_ALLOWED_HOSTNAME_SUFFIXES = [
-  ".botframework.com",
-  ".microsoft.com",
-  ".skype.com",
-  ".trafficmanager.net",
-  ".azure-api.net",
-] as const;
-
 /**
- * Validates that a Teams serviceUrl is from an allowed Microsoft domain and returns
- * only the validated HTTPS origin (protocol + host), stripping path/query/fragment.
- * Throws for any URL that is malformed, non-HTTPS, or from a disallowed domain.
+ * Sends a reply to a Teams conversation.
+ * The outbound endpoint is always sourced from TEAMS_BOT_BASE_URL (env var),
+ * never from the inbound activity.serviceUrl, eliminating the SSRF vector.
  */
-function validateTeamsServiceUrl(serviceUrl: string): string {
-  let parsed: URL;
-  try { parsed = new URL(serviceUrl); } catch { throw new Error("Invalid Teams serviceUrl"); }
-  if (parsed.protocol !== "https:") throw new Error("Teams serviceUrl must use HTTPS");
-  const host = parsed.hostname.toLowerCase();
-  if (!TEAMS_ALLOWED_HOSTNAME_SUFFIXES.some(s => host.endsWith(s))) {
-    throw new Error(`Teams serviceUrl not from an allowed Microsoft domain: ${host}`);
-  }
-  return `https://${parsed.host}`; // return only the validated origin
-}
-
 export async function replyToTeams(
-  serviceUrl: string,
+  _serviceUrl: string,
   conversationId: string,
   activityId: string,
   text: string,
   appId: string,
   appPassword: string,
 ): Promise<void> {
-  const safeBase = validateTeamsServiceUrl(serviceUrl);
-  const replyUrl = new URL(`${safeBase}/v3/conversations/${encodeURIComponent(conversationId)}/activities/${encodeURIComponent(activityId)}`);
+  // Use the hardcoded/env-configured base URL — _serviceUrl is ignored to prevent SSRF.
+  const base = getTeamsBotBaseUrl();
+  const replyUrl = new URL(`${base}/v3/conversations/${encodeURIComponent(conversationId)}/activities/${encodeURIComponent(activityId)}`);
   const token = await getTeamsBotToken(appId, appPassword);
   await fetch(replyUrl, {
     method: "POST",
@@ -117,14 +116,15 @@ export async function replyToTeams(
 }
 
 async function sendTeamsTyping(
-  serviceUrl: string,
+  _serviceUrl: string,
   conversationId: string,
   appId: string,
   appPassword: string,
 ): Promise<void> {
   try {
-    const safeBase = validateTeamsServiceUrl(serviceUrl);
-    const typingUrl = new URL(`${safeBase}/v3/conversations/${encodeURIComponent(conversationId)}/activities`);
+    // Use the hardcoded/env-configured base URL — _serviceUrl is ignored to prevent SSRF.
+    const base = getTeamsBotBaseUrl();
+    const typingUrl = new URL(`${base}/v3/conversations/${encodeURIComponent(conversationId)}/activities`);
     const token = await getTeamsBotToken(appId, appPassword);
     await fetch(typingUrl, {
       method: "POST",
@@ -258,18 +258,15 @@ export async function handleTeamsInteraction(channelId: string, req: Request, re
       const status = resolution === "approved" ? "approved" : "rejected";
       await storage.resolveApprovalRequest(approvalId, activity.from?.name ?? "teams-user", "", status);
 
-      const ref = activity.serviceUrl
-        ? { serviceUrl: activity.serviceUrl, conversationId: activity.conversation?.id, activityId: activity.id }
-        : {};
-      const serviceUrl = (ref as any).serviceUrl;
-      const conversationId = (ref as any).conversationId;
-      const activityId = (ref as any).activityId;
-      if (!serviceUrl || !conversationId || !activityId || !cfg.appId || !cfg.appPassword) return;
+      const conversationId = activity.conversation?.id;
+      const activityId = activity.id;
+      if (!conversationId || !activityId || !cfg.appId || !cfg.appPassword) return;
 
       const replyText = status === "approved"
         ? `✅ Approval granted for: ${approval.action}`
         : `❌ Approval rejected for: ${approval.action}`;
-      await replyToTeams(serviceUrl, conversationId, activityId, replyText, cfg.appId, cfg.appPassword);
+      // Pass empty string for serviceUrl — replyToTeams ignores it and uses env-configured base
+      await replyToTeams("", conversationId, activityId, replyText, cfg.appId, cfg.appPassword);
 
       if (status === "approved" && approval.taskId) {
         const originalTask = await storage.getTask(approval.taskId);
@@ -335,11 +332,11 @@ async function processTeamsMessage(channelId: string, cfg: TeamsChannelConfig, a
   const externalUserName = activity.from?.name;
 
   if (cfg.allowedUsers && cfg.allowedUsers.length > 0 && !cfg.allowedUsers.includes(externalUserId)) {
-    const serviceUrl = activity.serviceUrl;
     const conversationId = activity.conversation?.id;
     const activityId = activity.id;
-    if (serviceUrl && conversationId && activityId && cfg.appId && cfg.appPassword) {
-      await replyToTeams(serviceUrl, conversationId, activityId, "You are not authorized to use this bot.", cfg.appId, cfg.appPassword);
+    if (conversationId && activityId && cfg.appId && cfg.appPassword) {
+      // Pass empty string for serviceUrl — replyToTeams ignores it and uses env-configured base
+      await replyToTeams("", conversationId, activityId, "You are not authorized to use this bot.", cfg.appId, cfg.appPassword);
     }
     return;
   }
@@ -399,8 +396,9 @@ async function processTeamsMessage(channelId: string, cfg: TeamsChannelConfig, a
     return;
   }
 
-  if (serviceUrl && conversationId && cfg.appId && cfg.appPassword) {
-    await sendTeamsTyping(serviceUrl, conversationId, cfg.appId, cfg.appPassword);
+  if (conversationId && cfg.appId && cfg.appPassword) {
+    // Pass empty string for serviceUrl — sendTeamsTyping ignores it and uses env-configured base
+    await sendTeamsTyping("", conversationId, cfg.appId, cfg.appPassword);
   }
 
   const imageAttachments: string[] = [];
