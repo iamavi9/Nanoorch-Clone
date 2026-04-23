@@ -59,7 +59,7 @@ async function fireJob(jobId: string) {
       jobName: job.name,
     }).catch(console.error);
   } catch (err) {
-    console.error(`[scheduler] Error firing job "${job.name}":`, err);
+    console.error(`[scheduler] Error firing job "${job.name}":`, err); // nosemgrep: javascript.lang.security.audit.unsafe-formatstring -- console.error has no format-string interpretation; job.name is an operator-defined scheduler name
   }
 }
 

@@ -498,6 +498,9 @@ const IDEMPOTENT_ERROR_CODES = new Set([
 ]);
 
 async function applySqlFile(client: any, filePath: string, fileName: string): Promise<void> {
+  if (!fileName.endsWith(".sql") || fileName.includes("..") || fileName.includes("/")) {
+    throw new Error(`[migrate] Refusing to apply unsafe migration filename: ${fileName}`);
+  }
   const migrationKey = `file:${fileName}`;
   const { rows } = await client.query(
     `SELECT name FROM _nanoorch_migrations WHERE name = $1`,
@@ -505,7 +508,7 @@ async function applySqlFile(client: any, filePath: string, fileName: string): Pr
   );
   if (rows.length > 0) return;
 
-  const content = await readFile(filePath, "utf-8");
+  const content = await readFile(filePath, "utf-8"); // nosemgrep: javascript.lang.security.audit.detect-non-literal-fs-filename -- filePath is join(migrationsDir, file) where file is validated to end with ".sql" without traversal
   const statements = content
     .split("-->statement-breakpoint")
     .map((s: string) => s.trim())

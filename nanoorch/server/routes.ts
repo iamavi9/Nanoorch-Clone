@@ -2562,10 +2562,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     const matched = types.length === 0 || types.some((t) => eventType.toLowerCase().includes(t.toLowerCase()) || t === "*");
 
     const renderTemplate = (template: string, data: Record<string, unknown>): string => {
-      return template.replace(/\{\{([^}]+)\}\}/g, (_, path: string) => {
-        const keys = path.trim().split(".");
-        let val: unknown = data;
-        for (const k of keys) { val = (val as Record<string, unknown>)?.[k]; }
+      const UNSAFE_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+      return template.replace(/\{\{([^}]+)\}\}/g, (_, rawPath: string) => {
+        const val = rawPath.trim().split(".").reduce<unknown>((obj, key) => {
+          if (obj == null || typeof obj !== "object" || UNSAFE_KEYS.has(key)) return undefined;
+          const o = obj as Record<string, unknown>;
+          return Object.prototype.hasOwnProperty.call(o, key) ? o[key] : undefined;
+        }, data);
         return val != null ? String(val) : "";
       });
     };

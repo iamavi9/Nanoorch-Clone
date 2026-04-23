@@ -474,7 +474,7 @@ export async function processGitWebhook(repo: GitRepo, event: GitWebhookEvent): 
           clearRepoWorkspace(task.id);
         }
       } catch (err: any) {
-        console.error(`[git-agent] Run ${run.id} failed:`, err);
+        console.error(`[git-agent] Run ${run.id} failed:`, err); // nosemgrep: javascript.lang.security.audit.unsafe-formatstring -- console.error does not interpret format directives; run.id is an internal DB ID
         await storage.updateGitAgentRun(run.id, { status: "failed", errorMessage: String(err?.message ?? err) });
       }
     }

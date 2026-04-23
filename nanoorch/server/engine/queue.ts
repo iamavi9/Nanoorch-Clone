@@ -33,7 +33,7 @@ async function processQueue() {
 
         runningTasks.set(task.id, orchestrator.id);
         executeTask(task.id)
-          .catch((err) => console.error(`Queue: task ${task.id} failed:`, err))
+          .catch((err) => console.error(`Queue: task ${task.id} failed:`, err)) // nosemgrep: javascript.lang.security.audit.unsafe-formatstring -- console.error has no format-string interpretation; task.id is an internal DB ID
           .finally(() => runningTasks.delete(task.id));
       }
     } catch (err) {

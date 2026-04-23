@@ -53,8 +53,8 @@ try:
 
     # cmd_prefix is a hardcoded list derived from the if/elif chain above;
     # fname is a securely-created tempfile path — no user input reaches the shell.
-    result = subprocess.run(  # noqa: S603
-        cmd_prefix + [fname],
+    result = subprocess.run(  # noqa: S603  # nosemgrep: python.lang.security.audit.dangerous-subprocess-use-audit
+        cmd_prefix + [fname],  # cmd_prefix is from a static allowlist; fname is a secure tempfile
         capture_output=True,
         text=True,
         timeout=timeout_seconds,

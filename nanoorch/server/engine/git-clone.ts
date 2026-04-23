@@ -161,7 +161,7 @@ async function isBinaryFile(filePath: string): Promise<boolean> {
   try {
     const { createReadStream } = await import("fs");
     return new Promise((resolve) => {
-      const stream = createReadStream(filePath, { start: 0, end: 511 });
+      const stream = createReadStream(filePath, { start: 0, end: 511 }); // nosemgrep: javascript.lang.security.audit.detect-non-literal-fs-filename -- filePath is bounds-checked by tryReadFile() before calling isBinaryFile()
       const chunks: Buffer[] = [];
       stream.on("data", (c) => chunks.push(c as Buffer));
       stream.on("end", () => {
@@ -176,16 +176,16 @@ async function isBinaryFile(filePath: string): Promise<boolean> {
 }
 
 async function tryReadFile(dir: string, relPath: string): Promise<string | null> {
-  const abs = join(dir, relPath);
-  // Guard against path traversal: resolved path must remain inside `dir`
-  const resolvedDir = join(dir);
+  const { resolve } = await import("path");
+  const resolvedDir = resolve(dir);
+  const abs = resolve(dir, relPath);
   if (!abs.startsWith(resolvedDir + "/") && abs !== resolvedDir) return null;
-  if (!existsSync(abs)) return null;
+  if (!existsSync(abs)) return null; // nosemgrep: javascript.lang.security.audit.detect-non-literal-fs-filename -- abs is path.resolve(dir,relPath), bounds-checked above
   try {
-    const s = await stat(abs);
+    const s = await stat(abs); // nosemgrep: javascript.lang.security.audit.detect-non-literal-fs-filename
     if (!s.isFile() || s.size > MAX_FILE_BYTES * 2) return null;
     if (await isBinaryFile(abs)) return null;
-    const content = await readFile(abs, "utf-8");
+    const content = await readFile(abs, "utf-8"); // nosemgrep: javascript.lang.security.audit.detect-non-literal-fs-filename
     if (content.length > MAX_FILE_BYTES) {
       return content.slice(0, MAX_FILE_BYTES) + "\n…(file truncated at 10 KB)";
     }

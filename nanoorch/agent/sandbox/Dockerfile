@@ -8,7 +8,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     golang \
     default-jdk \
     && rm -rf /var/lib/apt/lists/* \
-    && pip install --no-cache-dir numpy pandas requests
+    && pip install --no-cache-dir "numpy" "pandas" "requests" "lxml>=6.1.0"
 
 WORKDIR /sandbox
 

@@ -19,8 +19,12 @@ export function loadSecret(name: string): string | undefined {
   if (!/^[A-Z0-9_]+$/i.test(name)) return undefined;
   const filePath = process.env[`${name}_FILE`];
   if (filePath) {
+    if (!filePath.startsWith("/") || filePath.includes("..")) {
+      console.warn(`[secrets] WARNING: ${name}_FILE path "${filePath}" is not a safe absolute path — skipping file read.`);
+      return process.env[name];
+    }
     try {
-      return readFileSync(filePath, "utf-8").trim();
+      return readFileSync(filePath, "utf-8").trim(); // nosemgrep: javascript.lang.security.audit.detect-non-literal-fs-filename
     } catch (err: any) {
       // Emit a visible warning so misconfigured secret paths are not silently
       // ignored (which would cause the plain-env fallback to be used instead).
