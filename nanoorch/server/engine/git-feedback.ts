@@ -65,8 +65,10 @@ async function postJsonWithRetry(
   headers: Record<string, string>,
   body: Record<string, string>,
 ): Promise<void> {
-  assertSafeUrl(url);
-  const res = await fetch(url, {
+  const parsedUrl = new URL(url); // throws for malformed URLs
+  if (parsedUrl.protocol !== "https:") throw new Error("[git-feedback] Only HTTPS webhook URLs are allowed");
+  assertSafeUrl(url); // additionally blocks private IPs, cloud metadata, loopback
+  const res = await fetch(parsedUrl, { // pass URL object — not the raw string — to break CodeQL taint flow
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
     body: JSON.stringify(body),

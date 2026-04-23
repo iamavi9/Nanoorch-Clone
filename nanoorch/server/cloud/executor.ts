@@ -170,7 +170,8 @@ export async function validateCredentials(creds: CloudCredentials): Promise<{ ok
       const { webhookUrl } = creds.credentials;
       if (!webhookUrl) throw new Error("Teams webhook URL is required");
       assertSafeUrl(webhookUrl);
-      const isConnector = webhookUrl.includes("webhook.office.com");
+      const isConnector = new URL(webhookUrl).hostname.endsWith(".webhook.office.com") ||
+        new URL(webhookUrl).hostname === "webhook.office.com";
       const testBody = isConnector
         ? {
             "@type": "MessageCard",
@@ -857,7 +858,8 @@ async function executeTeamsTool(name: string, args: Record<string, string>, cred
   assertSafeUrl(webhookUrl);
 
   // Detect URL type: old Office 365 Connectors vs new Power Automate Workflows
-  const isConnector = webhookUrl.includes("webhook.office.com");
+  const isConnector = new URL(webhookUrl).hostname.endsWith(".webhook.office.com") ||
+    new URL(webhookUrl).hostname === "webhook.office.com";
 
   const buildAdaptiveCard = (bodyBlocks: object[]) => ({
     type: "message",

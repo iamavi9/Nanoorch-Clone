@@ -2638,8 +2638,8 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (a.length !== b.length || !timingSafeEqual(a, b)) return res.status(401).json({ error: "Invalid token" });
     }
 
-    const rawEvent = (req.headers["x-gitlab-event"] as string) ?? "";
-    const eventType = rawEvent.toLowerCase().replace(/\s+hook$/, "").replace(/\s+/g, "_");
+    const rawEvent = ((req.headers["x-gitlab-event"] as string) ?? "").slice(0, 200);
+    const eventType = rawEvent.toLowerCase().replace(/ hook$/i, "").replace(/\s+/g, "_");
     res.json({ ok: true });
     fireTrigger(trigger, eventType, req.body).catch(console.error);
   });

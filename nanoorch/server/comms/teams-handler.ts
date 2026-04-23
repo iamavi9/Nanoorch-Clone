@@ -1,7 +1,7 @@
 import type { Request, Response } from "express";
 import { storage } from "../storage";
 import { executeTask } from "../engine/executor";
-import { assertSafeUrl } from "../lib/ssrf-guard";
+
 
 const TASK_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -60,11 +60,41 @@ async function verifyTeamsJwt(authHeader: string): Promise<boolean> {
     const payload = JSON.parse(Buffer.from(payload64, "base64url").toString("utf8"));
     const now = Math.floor(Date.now() / 1000);
     if (payload.exp && payload.exp < now) return false;
-    if (payload.iss && !payload.iss.includes("botframework.com") && !payload.iss.includes("microsoftonline.com")) return false;
+    if (payload.iss) {
+      let issuer: URL;
+      try { issuer = new URL(String(payload.iss)); } catch { return false; }
+      const issHost = issuer.hostname.toLowerCase();
+      if (!issHost.endsWith(".botframework.com") && !issHost.endsWith(".microsoftonline.com") && !issHost.endsWith(".microsoft.com") && !issHost.endsWith(".windows.net")) return false;
+    }
     return true;
   } catch {
     return false;
   }
+}
+
+/** Microsoft Teams service URLs must be from one of these verified Microsoft domains. */
+const TEAMS_ALLOWED_HOSTNAME_SUFFIXES = [
+  ".botframework.com",
+  ".microsoft.com",
+  ".skype.com",
+  ".trafficmanager.net",
+  ".azure-api.net",
+] as const;
+
+/**
+ * Validates that a Teams serviceUrl is from an allowed Microsoft domain and returns
+ * only the validated HTTPS origin (protocol + host), stripping path/query/fragment.
+ * Throws for any URL that is malformed, non-HTTPS, or from a disallowed domain.
+ */
+function validateTeamsServiceUrl(serviceUrl: string): string {
+  let parsed: URL;
+  try { parsed = new URL(serviceUrl); } catch { throw new Error("Invalid Teams serviceUrl"); }
+  if (parsed.protocol !== "https:") throw new Error("Teams serviceUrl must use HTTPS");
+  const host = parsed.hostname.toLowerCase();
+  if (!TEAMS_ALLOWED_HOSTNAME_SUFFIXES.some(s => host.endsWith(s))) {
+    throw new Error(`Teams serviceUrl not from an allowed Microsoft domain: ${host}`);
+  }
+  return `https://${parsed.host}`; // return only the validated origin
 }
 
 export async function replyToTeams(
@@ -75,11 +105,10 @@ export async function replyToTeams(
   appId: string,
   appPassword: string,
 ): Promise<void> {
-  const safeBase = new URL(serviceUrl).href.replace(/\/$/, "");
-  const url = `${safeBase}/v3/conversations/${encodeURIComponent(conversationId)}/activities/${encodeURIComponent(activityId)}`;
-  assertSafeUrl(url);
+  const safeBase = validateTeamsServiceUrl(serviceUrl);
+  const replyUrl = new URL(`${safeBase}/v3/conversations/${encodeURIComponent(conversationId)}/activities/${encodeURIComponent(activityId)}`);
   const token = await getTeamsBotToken(appId, appPassword);
-  await fetch(url, {
+  await fetch(replyUrl, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify({ type: "message", text }),
@@ -94,11 +123,10 @@ async function sendTeamsTyping(
   appPassword: string,
 ): Promise<void> {
   try {
-    const safeTypingBase = new URL(serviceUrl).href.replace(/\/$/, "");
-    const url = `${safeTypingBase}/v3/conversations/${encodeURIComponent(conversationId)}/activities`;
-    assertSafeUrl(url);
+    const safeBase = validateTeamsServiceUrl(serviceUrl);
+    const typingUrl = new URL(`${safeBase}/v3/conversations/${encodeURIComponent(conversationId)}/activities`);
     const token = await getTeamsBotToken(appId, appPassword);
-    await fetch(url, {
+    await fetch(typingUrl, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ type: "typing" }),
@@ -297,7 +325,10 @@ export async function handleTeamsEvent(channelId: string, req: Request, res: Res
 }
 
 async function processTeamsMessage(channelId: string, cfg: TeamsChannelConfig, activity: any): Promise<void> {
-  const rawText = (typeof activity.text === "string" ? activity.text : "").replace(/<[^>]*>/g, "").trim();
+  const rawText = (typeof activity.text === "string" ? activity.text : "")
+    .slice(0, 100_000)
+    .replace(/<[^>]{0,500}>/g, "")
+    .trim();
   if (!rawText) return;
 
   const externalUserId = activity.from?.id ?? "";

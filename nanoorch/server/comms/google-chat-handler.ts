@@ -22,7 +22,7 @@ const BYPASS_PHRASES = [
 ];
 
 function stripBotMention(text: string): string {
-  return text.replace(/<[^>]*>/g, "").trim();
+  return text.slice(0, 100_000).replace(/<[^>]{0,500}>/g, "").trim();
 }
 
 async function postGoogleChatReply(webhookUrl: string, text: string): Promise<void> {

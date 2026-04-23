@@ -107,6 +107,20 @@ export async function cloneRepo(opts: {
 }): Promise<CloneResult> {
   const { provider, repoPath, repoUrl, token, branch, sha } = opts;
 
+  // Validate inputs before constructing any git command arguments.
+  // repoPath comes from the database (originally user-supplied) — block path traversal and option injection.
+  if (!repoPath || !/^[A-Za-z0-9_.\-\/]+$/.test(repoPath) || repoPath.includes("..")) {
+    throw new Error(`[git-clone] Invalid repository path "${repoPath}": only alphanumeric chars, slashes, hyphens, underscores, and dots are allowed`);
+  }
+  // sha is stored in the DB; must be a valid hex commit reference.
+  if (sha && !/^[0-9a-f]{7,64}$/i.test(sha)) {
+    throw new Error(`[git-clone] Invalid commit SHA "${sha}": must be a 7–64 character hexadecimal string`);
+  }
+  // branch is stored in the DB; block control characters that could confuse git argument parsing.
+  if (branch && /[\r\n\0\x01-\x1f\x7f]/.test(branch)) {
+    throw new Error(`[git-clone] Branch name contains disallowed control characters`);
+  }
+
   let cloneUrl: string;
   if (provider === "github") {
     cloneUrl = `https://x-access-token:${token}@github.com/${repoPath}.git`;
