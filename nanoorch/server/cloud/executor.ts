@@ -1017,6 +1017,7 @@ async function executeSlackTool(name: string, args: Record<string, string>, cred
 }
 
 async function executeGoogleChatTool(name: string, args: Record<string, string>, creds: GoogleChatCredentials): Promise<unknown> {
+  assertSafeUrl(creds.webhookUrl);
   const post = async (body: object) => {
     const res = await fetch(creds.webhookUrl, {
       method: "POST",

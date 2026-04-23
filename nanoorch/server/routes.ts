@@ -2583,6 +2583,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await storage.logTriggerEvent({ triggerId: trigger.id, source: trigger.source, eventType, payloadPreview, matched: true, error: "Orchestrator not found" });
       return;
     }
+    if (orchestrator.baseUrl) assertSafeUrl(orchestrator.baseUrl);
     const intent = await classifyIntent(prompt, orchestrator.provider, orchestrator.model, orchestrator.baseUrl);
     const task = await storage.createTask({
       orchestratorId: trigger.orchestratorId,

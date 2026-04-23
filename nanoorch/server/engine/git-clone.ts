@@ -15,6 +15,7 @@ import { mkdtemp, rm, readFile, stat } from "fs/promises";
 import { existsSync } from "fs";
 import { join, extname } from "path";
 import { tmpdir } from "os";
+import { assertSafeUrl } from "../lib/ssrf-guard";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -110,8 +111,9 @@ export async function cloneRepo(opts: {
   if (provider === "github") {
     cloneUrl = `https://x-access-token:${token}@github.com/${repoPath}.git`;
   } else {
-    const baseUrl = repoUrl?.match(/^https?:\/\/[^/]+/)?.[0] ?? "https://gitlab.com";
-    cloneUrl = baseUrl.replace(/^(https?:\/\/)/, `$1oauth2:${token}@`) + `/${repoPath}.git`;
+    const baseUrl = repoUrl?.match(/^https:\/\/[^/]+/)?.[0] ?? "https://gitlab.com";
+    assertSafeUrl(baseUrl);
+    cloneUrl = `${baseUrl.replace(/^https:\/\//, `https://oauth2:${token}@`)}/${repoPath}.git`;
   }
 
   const dir = await mkdtemp(join(tmpdir(), "nanoorch-git-"));
