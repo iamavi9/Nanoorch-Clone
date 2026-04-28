@@ -573,3 +573,19 @@ export async function runMigrations(): Promise<void> {
     client.release();
   }
 }
+
+// When executed directly as the standalone migrate script (dist/migrate.cjs),
+// run migrations and exit.  Guarded by argv check so this block is NOT
+// triggered when migrate.ts is imported by index.ts (index.cjs).
+if (/migrate\.cjs$/.test(process.argv[1] ?? "") || /migrate\.ts$/.test(process.argv[1] ?? "")) {
+  runMigrations()
+    .then(() => pool.end())
+    .then(() => {
+      console.log("[db] Migrations complete.");
+      process.exit(0);
+    })
+    .catch((err: unknown) => {
+      console.error("[db] Migration failed:", err);
+      process.exit(1);
+    });
+}

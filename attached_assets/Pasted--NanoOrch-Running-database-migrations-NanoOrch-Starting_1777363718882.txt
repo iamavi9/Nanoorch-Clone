@@ -1,0 +1,78 @@
+[NanoOrch] Running database migrations...
+[NanoOrch] Starting server...
+[db] Migration failed: TypeError: Cannot read properties of undefined (reading 'searchParams')
+    at ul (/app/dist/index.cjs:65:28556)
+    at new W0 (/app/dist/index.cjs:65:31562)
+    at new bh (/app/dist/index.cjs:66:2470)
+    at kx.newClient (/app/dist/index.cjs:66:16239)
+    at kx.connect (/app/dist/index.cjs:66:16188)
+    at B5 (/app/dist/index.cjs:881:1399)
+    at /app/dist/index.cjs:886:1328
+    at Object.<anonymous> (/app/dist/index.cjs:886:1800)
+    at Module._compile (node:internal/modules/cjs/loader:1521:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1623:10)
+[NanoOrch] Running database migrations...
+[NanoOrch] Starting server...
+[db] Migration failed: TypeError: Cannot read properties of undefined (reading 'searchParams')
+    at ul (/app/dist/index.cjs:65:28556)
+    at new W0 (/app/dist/index.cjs:65:31562)
+    at new bh (/app/dist/index.cjs:66:2470)
+    at kx.newClient (/app/dist/index.cjs:66:16239)
+    at kx.connect (/app/dist/index.cjs:66:16188)
+    at B5 (/app/dist/index.cjs:881:1399)
+    at /app/dist/index.cjs:886:1328
+    at Object.<anonymous> (/app/dist/index.cjs:886:1800)
+    at Module._compile (node:internal/modules/cjs/loader:1521:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1623:10)
+[NanoOrch] Running database migrations...
+[NanoOrch] Starting server...
+[db] Migration failed: TypeError: Cannot read properties of undefined (reading 'searchParams')
+    at ul (/app/dist/index.cjs:65:28556)
+    at new W0 (/app/dist/index.cjs:65:31562)
+    at new bh (/app/dist/index.cjs:66:2470)
+    at kx.newClient (/app/dist/index.cjs:66:16239)
+    at kx.connect (/app/dist/index.cjs:66:16188)
+    at B5 (/app/dist/index.cjs:881:1399)
+    at /app/dist/index.cjs:886:1328
+    at Object.<anonymous> (/app/dist/index.cjs:886:1800)
+    at Module._compile (node:internal/modules/cjs/loader:1521:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1623:10)
+[NanoOrch] Running database migrations...
+[NanoOrch] Starting server...
+[db] Migration failed: TypeError: Cannot read properties of undefined (reading 'searchParams')
+    at ul (/app/dist/index.cjs:65:28556)
+    at new W0 (/app/dist/index.cjs:65:31562)
+    at new bh (/app/dist/index.cjs:66:2470)
+    at kx.newClient (/app/dist/index.cjs:66:16239)
+    at kx.connect (/app/dist/index.cjs:66:16188)
+    at B5 (/app/dist/index.cjs:881:1399)
+    at /app/dist/index.cjs:886:1328
+    at Object.<anonymous> (/app/dist/index.cjs:886:1800)
+    at Module._compile (node:internal/modules/cjs/loader:1521:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1623:10)
+[NanoOrch] Running database migrations...
+[NanoOrch] Starting server...
+[db] Migration failed: TypeError: Cannot read properties of undefined (reading 'searchParams')
+    at ul (/app/dist/index.cjs:65:28556)
+    at new W0 (/app/dist/index.cjs:65:31562)
+    at new bh (/app/dist/index.cjs:66:2470)
+    at kx.newClient (/app/dist/index.cjs:66:16239)
+    at kx.connect (/app/dist/index.cjs:66:16188)
+    at B5 (/app/dist/index.cjs:881:1399)
+    at /app/dist/index.cjs:886:1328
+    at Object.<anonymous> (/app/dist/index.cjs:886:1800)
+    at Module._compile (node:internal/modules/cjs/loader:1521:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1623:10)
+[NanoOrch] Running database migrations...
+[NanoOrch] Starting server...
+[db] Migration failed: TypeError: Cannot read properties of undefined (reading 'searchParams')
+    at ul (/app/dist/index.cjs:65:28556)
+    at new W0 (/app/dist/index.cjs:65:31562)
+    at new bh (/app/dist/index.cjs:66:2470)
+    at kx.newClient (/app/dist/index.cjs:66:16239)
+    at kx.connect (/app/dist/index.cjs:66:16188)
+    at B5 (/app/dist/index.cjs:881:1399)
+    at /app/dist/index.cjs:886:1328
+    at Object.<anonymous> (/app/dist/index.cjs:886:1800)
+    at Module._compile (node:internal/modules/cjs/loader:1521:14)
+    at Module._extensions..js (node:internal/modules/cjs/loader:1623:10)
