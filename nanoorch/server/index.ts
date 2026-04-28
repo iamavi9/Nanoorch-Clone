@@ -11,11 +11,15 @@ app.disable("x-powered-by");
 // snyk-disable-next-line javascript/HttpToHttps
 const httpServer = createServer(app);
 
-// In production the app runs behind a TLS-terminating reverse proxy.
-// Redirect any plain-HTTP requests that slip through to HTTPS.
+// Redirect plain-HTTP requests to HTTPS only when the operator has explicitly
+// declared that the app sits behind an HTTPS-terminating proxy (COOKIE_SECURE=true).
+// Using NODE_ENV=production alone caused ERR_SSL_PROTOCOL_ERROR on deployments
+// where the load balancer forwards plain HTTP (no TLS listener configured).
+// COOKIE_SECURE=true is already the canonical "I have HTTPS" signal used for
+// session-cookie security — see docker-compose.yml for documentation.
 app.use((req, res, next) => {
   if (
-    process.env.NODE_ENV === "production" &&
+    process.env.COOKIE_SECURE === "true" &&
     req.headers["x-forwarded-proto"] !== "https"
   ) {
     return res.redirect(301, `https://${req.headers.host}${req.url}`);
